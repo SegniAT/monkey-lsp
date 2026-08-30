@@ -1,4 +1,4 @@
-package lsp
+package protocol
 
 type HoverRequest struct {
 	Request
@@ -11,7 +11,7 @@ type HoverParams struct {
 
 type HoverResponse struct {
 	Response
-	Result Hover `json:"result"`
+	Result *Hover `json:"result"`
 }
 
 type Hover struct {

@@ -1,4 +1,4 @@
-package lsp
+package protocol
 
 type DefinitionRequest struct {
 	Request
@@ -11,6 +11,6 @@ type DefinitionParams struct {
 
 type DefinitionResponse struct {
 	Response
-	Result Location `json:"result"`
+	Result *Location `json:"result"`
 	//Error  any        `json:"error"`
 }
