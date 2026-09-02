@@ -1,3 +1,4 @@
+test.monkey
 bin/
 *.log
 go.work

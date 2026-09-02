@@ -4,120 +4,112 @@ import (
 	"fmt"
 
 	"github.com/SegniAT/monkey-language-interpreter/ast"
-	"github.com/SegniAT/monkey-lsp/lsp"
+	"github.com/SegniAT/monkey-language-interpreter/lexer"
+	"github.com/SegniAT/monkey-language-interpreter/parser"
+	"github.com/SegniAT/monkey-language-interpreter/token"
 )
-
-type State struct {
-	Documents map[string]*Document
-}
 
 type Document struct {
 	Version int
 	URI     string
 	Content string
 	AST     *ast.Program
+	parser  *parser.Parser
+
+	rootScope      *symbolTable
+	identifierUses map[*ast.Identifier]*symbol
+	functionScopes map[*ast.FunctionLiteral]*symbolTable
+}
+
+func (d *Document) Parse() {
+	if d == nil {
+		return
+	}
+
+	d.parser = parser.New(lexer.New(d.Content))
+	d.AST = d.parser.ParseProgram()
+}
+
+type State struct {
+	Documents map[string]*Document
 }
 
 func NewState() *State {
 	return &State{Documents: map[string]*Document{}}
 }
 
-func (s *State) DidOpen(params lsp.DidOpenTextDocumentParams) []lsp.Diagnostic {
-	uri := params.TextDocument.URI
-	text := params.TextDocument.Text
-
-	doc := &Document{
-		URI:     uri,
-		Content: text,
-		//AST:     ast.parse(text),
-	}
-
+func (s *State) DidOpen(version int, uri, text string) []token.Diagnostic {
+	doc := &Document{Version: version, URI: uri, Content: text}
 	s.Documents[uri] = doc
-
-	return nil
+	doc.Parse()
+	return append(doc.parser.Diagnostics(), doc.analyze()...)
 }
 
-func (s *State) DidChange(params lsp.DidChangeTextDocumentParams) []lsp.Diagnostic {
-	doc, ok := s.Documents[params.TextDocument.URI]
+// contentChange is the full content of the text as specified in our server capabilities
+func (s *State) DidChange(version int, uri string, contentChange string) []token.Diagnostic {
+	doc, ok := s.Documents[uri]
 	if !ok {
 		return nil
 	}
 
-	if len(params.ContentChanges) == 0 {
+	if contentChange == "" {
 		return nil
 	}
 
-	change := params.ContentChanges[len(params.ContentChanges)-1]
-
-	doc.Version = params.TextDocument.Version
-	doc.Content = change.Text
-
-	// Parse the new content.
-	// doc.AST = parser.Parse(doc.Content)
-	return nil
+	doc.Version = version
+	doc.Content = contentChange
+	doc.Parse()
+	return append(doc.parser.Diagnostics(), doc.analyze()...)
 }
 
-// TODO: just bad, don't couple them if possible
-func (s *State) Hover(request lsp.HoverRequest) lsp.HoverResponse {
-	document := s.Documents[request.Params.TextDocument.URI]
+func (s *State) Hover(uri string, line, character uint) *Hover {
+	document := s.Documents[uri]
+	if document == nil {
+		return nil
+	}
 
-	return lsp.HoverResponse{
-		Response: lsp.Response{
-			Message: lsp.Message{
-				JSONRPC: "2.0",
-			},
-			ID: &request.ID,
+	return &Hover{
+		Contents: MarkupContent{
+			Kind: MarkupMarkdown,
+			Value: fmt.Sprintf(`# Sup nigga
+				URI: %s
+				Length: %d
+				==faf==
+				`, document.URI, len(document.Content)),
 		},
-		Result: lsp.Hover{
-			Contents: lsp.MarkupContent{
-				Kind: lsp.MarkupMarkdown,
-				Value: fmt.Sprintf(`# Sup nigga
-					URI: %s
-					Length: %d
-					==faf==
-					`, document.URI, len(document.Content)),
-			},
-			Range: &lsp.Range{Start: request.Params.Position, End: request.Params.Position},
+		Range: &Range{
+			Start: Position{Line: line, Character: character},
+			End:   Position{Line: line, Character: character},
 		},
 	}
 }
 
-func (s *State) Definition(request lsp.DefinitionRequest) lsp.DefinitionResponse {
-	return lsp.DefinitionResponse{
-		Response: lsp.Response{
-			Message: lsp.Message{
-				JSONRPC: "2.0",
+func (s *State) Definition(uri string, line, character uint) *Location {
+	return &Location{
+		URI: uri,
+		Range: Range{
+			Start: Position{
+				Line:      line,
+				Character: character,
 			},
-			ID: &request.ID,
-		},
-		Result: lsp.Location{
-			URI: request.Params.TextDocument.URI,
-			Range: lsp.Range{
-				Start: lsp.Position{Line: request.Params.Position.Line - 1, Character: request.Params.Position.Character - 1},
-				End:   lsp.Position{Line: request.Params.Position.Line - 1, Character: request.Params.Position.Character - 1},
+			End: Position{
+				Line:      line,
+				Character: character,
 			},
 		},
 	}
 }
 
-func (s *State) Completion(request lsp.CompletionRequest) lsp.CompletionResponse {
-	return lsp.CompletionResponse{
-		Response: lsp.Response{
-			Message: lsp.Message{
-				JSONRPC: "2.0",
-			},
-			ID: &request.ID,
-		},
-		Result: []lsp.CompletionItem{
-			{
-				Label:  "say what",
-				Detail: "say whaaat",
-				Documentation: lsp.MarkupContent{
-					Kind: lsp.MarkupMarkdown,
-					Value: `# brotha
-					## how how how
-					`,
-				},
+func (s *State) Completion(uri string, line, character uint) []CompletionItem {
+	return []CompletionItem{
+		{
+			Label:  "say what",
+			Detail: "say whaaat",
+			Documentation: MarkupContent{
+				Kind: MarkupMarkdown,
+				Value: `# brotha
+			## how how how
+			`,
 			},
 		},
 	}
