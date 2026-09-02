@@ -31,7 +31,7 @@ func (s *Server) handleTextDocumentHover(id int64, content json.RawMessage) {
 		return
 	}
 
-	result := s.state.Hover(request.Params.TextDocument.URI, request.Params.Position.Line, request.Params.Position.Character)
+	result := s.state.Hover(request.Params.TextDocument.URI, request.Params.Position.Line+1, request.Params.Position.Character+1)
 	s.writeMessage(protocol.HoverResponse{
 		Response: protocol.Response{
 			Message: protocol.Message{JSONRPC: "2.0"},
@@ -48,7 +48,7 @@ func (s *Server) handleTextDocumentDefinition(id int64, content json.RawMessage)
 		return
 	}
 
-	result := s.state.Definition(request.Params.TextDocument.URI, request.Params.Position.Line, request.Params.Position.Character)
+	result := s.state.Definition(request.Params.TextDocument.URI, request.Params.Position.Line+1, request.Params.Position.Character+1)
 	s.writeMessage(protocol.DefinitionResponse{
 		Response: protocol.Response{
 			Message: protocol.Message{JSONRPC: "2.0"},
