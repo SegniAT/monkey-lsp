@@ -31,6 +31,13 @@ func NewServer(reader io.Reader, writer io.Writer) *Server {
 }
 
 func (s *Server) Run() error {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("recovered from panic in message handler",
+				slog.Any("panic", r))
+		}
+	}()
+
 	for {
 		content, err := s.reader.ReadMessage()
 		if err != nil {
@@ -64,8 +71,20 @@ func (s *Server) Run() error {
 		}
 
 		if isRequest {
-			s.HandleRequest(*msg.ID, msg.Method, content)
+			// Spin up a goroutine for read-only requests
+			go func(reqID int64, reqMethod string, reqContent []byte) {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("recovered from panic in request handler",
+							slog.Any("panic", r),
+							slog.String("method", reqMethod))
+					}
+				}()
+
+				s.HandleRequest(reqID, reqMethod, reqContent)
+			}(*msg.ID, msg.Method, content)
 		} else {
+			// Run notifications synchronously to guarantee state mutation order
 			s.HandleNotification(msg.Method, content)
 		}
 	}
@@ -85,7 +104,6 @@ func (s *Server) HandleRequest(id int64, method string, content []byte) {
 		s.handleTextDocumentDefinition(id, content)
 	case "textDocument/completion":
 		s.handleTextDocumentCompletion(id, content)
-	// case "textDocument/documentHighlight":
 	default:
 		s.writeError(id, &protocol.ResponseError{
 			Code:    protocol.ErrMethodNotFound,
@@ -102,8 +120,8 @@ func (s *Server) HandleNotification(method string, content []byte) {
 		s.handleTextDocumentDidOpen(content)
 	case "textDocument/didChange":
 		s.handleTextDocumentDidChange(content)
-	// case "textDocument/didClose":
-	// 	s.handleTextDocumentDidClose(content)
+	case "textDocument/didClose":
+		s.handleTextDocumentDidClose(content)
 	case "exit":
 		s.handleExit()
 	default:

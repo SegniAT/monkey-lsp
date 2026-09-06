@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/SegniAT/monkey-language-interpreter/ast"
@@ -43,6 +44,7 @@ func (d *Document) parse() {
 }
 
 type State struct {
+	mu        sync.RWMutex
 	Documents map[string]*Document
 }
 
@@ -51,6 +53,9 @@ func NewState() *State {
 }
 
 func (s *State) DidOpen(version int, uri, text string) []token.Diagnostic {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	doc := &Document{Version: version, URI: uri, Content: text}
 	s.Documents[uri] = doc
 	doc.parse()
@@ -59,6 +64,9 @@ func (s *State) DidOpen(version int, uri, text string) []token.Diagnostic {
 
 // contentChange is the full content of the text as specified in our server capabilities
 func (s *State) DidChange(version int, uri string, contentChange string) []token.Diagnostic {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	doc, ok := s.Documents[uri]
 	if !ok {
 		return nil
@@ -76,6 +84,9 @@ func (s *State) DidChange(version int, uri string, contentChange string) []token
 
 // line and character are 0 based
 func (s *State) Hover(uri string, line, character uint) *Hover {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	document := s.Documents[uri]
 	if document == nil {
 		return nil
@@ -145,6 +156,9 @@ func (s *State) Hover(uri string, line, character uint) *Hover {
 }
 
 func (s *State) Definition(uri string, line, character uint) *Location {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	document := s.Documents[uri]
 	if document == nil {
 		return nil
@@ -172,6 +186,9 @@ func (s *State) Definition(uri string, line, character uint) *Location {
 }
 
 func (s *State) Completion(uri string, line, character uint) []CompletionItem {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	document := s.Documents[uri]
 	if document == nil {
 		return nil
@@ -418,4 +435,10 @@ func FindASTNode(node ast.Node, line, character uint) ast.Node {
 	}
 
 	return nil
+}
+
+func (s *State) Close(uri string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.Documents, uri)
 }

@@ -42,6 +42,18 @@ func (s *Server) handleTextDocumentDidChange(content json.RawMessage) {
 	slog.Info("document changed", slog.String("URI", doc.URI))
 }
 
+func (s *Server) handleTextDocumentDidClose(content json.RawMessage) {
+	var notification protocol.DidCloseTextDocumentNotification
+	if err := json.Unmarshal(content, &notification); err != nil {
+		slog.Error("Error unmarshalling didChange notification", slog.String("err", err.Error()))
+		return
+	}
+
+	s.state.Close(notification.Params.TextDocument.URI)
+
+	slog.Info("document closed", slog.String("URI", notification.Params.TextDocument.URI))
+}
+
 func (s *Server) publishDiagnostics(uri string, version int, diagnostics []token.Diagnostic) {
 	notif := protocol.PublishDiagnosticsNotification{
 		Notification: protocol.Notification{
