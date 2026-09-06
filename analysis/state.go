@@ -3,6 +3,7 @@ package analysis
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/SegniAT/monkey-language-interpreter/ast"
@@ -104,21 +105,20 @@ func (s *State) Hover(uri string, line, character uint) *Hover {
 			kind = "Built-in Function"
 		}
 
-		// TODO: Add function description
 		if identSymbol.Type == builtin {
 			desc := builtinDocs[identSymbol.Name]
 			markup = fmt.Sprintf("```monkey\nBuilt-in Function\n```\n---\n**%s**\n\n%s", identSymbol.Name, desc)
 		} else {
-			markup = fmt.Sprintf("```monkey\nlet %s = ...;\n```\n---\n**Kind:** %s  \n**Defined at:** Line %d, Col %d",
-				identSymbol.Name,
+			markup = fmt.Sprintf("**%s**\n---\n```monkey\n%s\n```\n**Defined at:** Line `%d`, Col `%d`",
 				kind,
+				identSymbol.Name,
 				identSymbol.Range.Start.Line,
 				identSymbol.Range.Start.Character)
 		}
 	case *ast.IntegerLiteral:
 		value := node.Value
-		markup = fmt.Sprintf("```monkey\n%d\n```\n---\n**Decimal:** %d  \n**Hex:** 0x%X  \n**Octal:** %O  \n**Binary:** 0b%b",
-			value, value, value, value, value)
+		markup = fmt.Sprintf("```monkey\n%d\n```\n---\n**Hex:**\t`0x%X`  \n**Octal:**\t`%O`  \n**Binary:**\t`0b%b`",
+			value, value, value, value)
 
 	case *ast.Boolean:
 		value := node.Value
@@ -172,20 +172,120 @@ func (s *State) Definition(uri string, line, character uint) *Location {
 }
 
 func (s *State) Completion(uri string, line, character uint) []CompletionItem {
-	return []CompletionItem{
-		{
-			Label:  "say what",
-			Detail: "say whaaat",
-			Documentation: MarkupContent{
-				Kind: MarkupMarkdown,
-				Value: `# brotha
-			## how how how
-			`,
-			},
-		},
+	document := s.Documents[uri]
+	if document == nil {
+		return nil
 	}
+
+	// character will land on an empty space, so we should go one character to the left
+	node := FindASTNode(document.AST, line, character-1)
+	if node == nil {
+		return nil
+	}
+
+	// Find the deepest function containing the node.
+	var deepestFuncLiteral *ast.FunctionLiteral
+	for funcLiteral := range document.functionScopes {
+		if !nodeEncloses(funcLiteral, node) {
+			continue
+		}
+
+		if deepestFuncLiteral == nil {
+			deepestFuncLiteral = funcLiteral
+			continue
+		}
+
+		if nodeEncloses(deepestFuncLiteral, funcLiteral) {
+			deepestFuncLiteral = funcLiteral
+		}
+	}
+
+	var deepestSymbolTable *symbolTable
+	if deepestFuncLiteral != nil {
+		deepestSymbolTable = document.functionScopes[deepestFuncLiteral]
+	} else {
+		deepestSymbolTable = document.rootScope
+	}
+
+	completionItems := []CompletionItem{}
+	nodeStr := node.TokenLiteral()
+	walker := deepestSymbolTable
+	for walker != nil {
+		for _, symbol := range walker.Symbols {
+			if !strings.HasPrefix(symbol.Name, nodeStr) {
+				continue
+			}
+
+			completionItems = append(completionItems, CompletionItem{
+				Label:  symbol.Name,
+				Detail: symbol.Name,
+				Kind: func() CompletionItemKind {
+					switch symbol.Type {
+					case builtin:
+						return Function
+					case variable, parameter:
+						return Variable
+					default:
+						panic("unknown symbol type")
+					}
+				}(),
+				Documentation: MarkupContent{},
+			})
+		}
+
+		walker = walker.Outer
+	}
+
+	// keywords
+	for keyword := range token.Keywords {
+		if !strings.HasPrefix(keyword, nodeStr) {
+			continue
+		}
+
+		completionItems = append(completionItems, CompletionItem{
+			Label:         keyword,
+			Detail:        keyword,
+			Kind:          Keyword,
+			Documentation: MarkupContent{},
+		})
+	}
+
+	return completionItems
 }
 
+// nodeEncloses helps us find if a node is enclosed in another node
+func nodeEncloses(outer, inner ast.Node) bool {
+	if outer == nil || inner == nil {
+		return false
+	}
+
+	outerStart, outerEnd := outer.Start(), outer.End()
+	innerStart, innerEnd := inner.Start(), inner.End()
+
+	// outer node starts after the inner
+	if outerStart.Line > innerStart.Line {
+		return false
+	}
+
+	// outer node ends before the inner
+	if outerEnd.Line < innerEnd.Line {
+		return false
+	}
+
+	// if both start on the same line but outer's character comes AFTER inner's
+	if outerStart.Line == innerStart.Line && outerStart.Character > innerStart.Character {
+		return false
+	}
+
+	// if both end on the same line but outer's character comes BEFORE inner's
+	if outerEnd.Line == innerEnd.Line && outerEnd.Character < innerEnd.Character {
+		return false
+	}
+
+	return true
+}
+
+// positionIsInRange helps us figure out if a position is in a node.
 func positionIsInRange(node ast.Node, line, character uint) bool {
 	if node == nil {
 		return false

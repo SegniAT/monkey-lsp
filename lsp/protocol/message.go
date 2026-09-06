@@ -20,13 +20,13 @@ type ErrorCode int
 
 const (
 	// Defined by JSON-RPC
-	ErrParseError     ErrorCode = -32700
-	ErrInvalidRequest ErrorCode = -32600
-	ErrMethodNotFound ErrorCode = -32601
-	ErrInvalidParams  ErrorCode = -32602
-	ErrInternalError  ErrorCode = -32603
-
-	ErrRequestFailed ErrorCode = -32803
+	ErrServerNotInitialized ErrorCode = -32002
+	ErrParseError           ErrorCode = -32700
+	ErrInvalidRequest       ErrorCode = -32600
+	ErrMethodNotFound       ErrorCode = -32601
+	ErrInvalidParams        ErrorCode = -32602
+	ErrInternalError        ErrorCode = -32603
+	ErrRequestFailed        ErrorCode = -32803
 )
 
 type ResponseError struct {

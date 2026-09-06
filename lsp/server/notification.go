@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Server) handleInitialized(_ json.RawMessage) {
-	slog.Info("initialized")
+	s.initialized.Store(true)
 }
 
 func (s *Server) handleTextDocumentDidOpen(content json.RawMessage) {
@@ -60,7 +60,7 @@ func (s *Server) publishDiagnostics(uri string, version int, diagnostics []token
 		},
 	}
 
-	s.writeMessage(notif)
+	_ = s.writeMessage(notif)
 }
 
 func toProtocolDiagnostics(diagnostics []token.Diagnostic) []protocol.Diagnostic {

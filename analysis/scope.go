@@ -20,14 +20,7 @@ type symbol struct {
 	Used       bool
 }
 
-var builtins = map[string]symbolType{
-	"len":   builtin,
-	"first": builtin,
-	"last":  builtin,
-	"rest":  builtin,
-	"push":  builtin,
-	"puts":  builtin,
-}
+var builtins = []string{"len", "first", "last", "rest", "push", "puts"}
 
 type symbolTable struct {
 	Outer   *symbolTable
@@ -47,8 +40,13 @@ func newRootScope() *symbolTable {
 		Symbols: map[string]*symbol{},
 	}
 
-	for name, kind := range builtins {
-		scope.define(name, kind, nil)
+	for _, name := range builtins {
+		symbol := &symbol{
+			Name: name,
+			Type: builtin,
+		}
+
+		scope.Symbols[name] = symbol
 	}
 
 	return scope

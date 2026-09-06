@@ -7,14 +7,14 @@ import (
 func TestNewRootScope(t *testing.T) {
 	rootSymbTable := newRootScope()
 
-	for name, symbolType := range builtins {
+	for _, name := range builtins {
 		symbol, ok := rootSymbTable.Symbols[name]
 		if !ok {
 			t.Fatalf("Inbuilt symbol with name '%s' not found.", name)
 		}
 
-		if symbol.Type != symbolType {
-			t.Errorf("Inbuilt symbol '%s': expected type %s, got %s.", name, symbolType, symbol.Type)
+		if symbol.Type != builtin {
+			t.Errorf("Inbuilt symbol '%s': expected type %s, got %s.", name, builtin, symbol.Type)
 		}
 	}
 }

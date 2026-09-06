@@ -44,6 +44,7 @@ func toProtocolCompletionItems(items []analysis.CompletionItem) []protocol.Compl
 		result = append(result, protocol.CompletionItem{
 			Label:         item.Label,
 			Detail:        item.Detail,
+			Kind:          (*protocol.CompletionItemKind)(&item.Kind),
 			Documentation: toProtocolMarkupContent(item.Documentation),
 		})
 	}

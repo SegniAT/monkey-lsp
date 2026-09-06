@@ -207,8 +207,7 @@ let myFunc = fn(param) {
 			character: 11, // on '4' in 42
 			wantContains: []string{
 				"```monkey\n42\n```",
-				"**Decimal:** 42",
-				"**Hex:** 0x2A",
+				"**Hex:**\t`0x2A`",
 			},
 		},
 		"string literal": {
@@ -245,8 +244,8 @@ let myFunc = fn(param) {
 			line:      5,
 			character: 7, // on 's' in str inside puts(str)
 			wantContains: []string{
-				"```monkey\nlet str = ...;\n```",
-				"**Kind:** Variable",
+				"Variable",
+				"```monkey\nstr\n```",
 			},
 		},
 		"parameter identifier": {
@@ -254,8 +253,8 @@ let myFunc = fn(param) {
 			line:      6,
 			character: 9, // on 'p' in param + num
 			wantContains: []string{
-				"```monkey\nlet param = ...;\n```",
-				"**Kind:** Parameter",
+				"Parameter",
+				"```monkey\nparam\n```",
 			},
 		},
 	}
@@ -282,6 +281,107 @@ let myFunc = fn(param) {
 			for _, expectedStr := range test.wantContains {
 				if !strings.Contains(hover.Contents.Value, expectedStr) {
 					t.Errorf("markup missing expected content.\nExpected to contain:\n%s\n\nFull Markup Got:\n%s", expectedStr, hover.Contents.Value)
+				}
+			}
+		})
+	}
+}
+
+func TestCompletion(t *testing.T) {
+	uri := "file:///tmp/completion_test.monkey"
+	tests := map[string]struct {
+		uri             string
+		content         string
+		line            uint
+		character       uint
+		completionItems []struct {
+			label string
+			kind  analysis.CompletionItemKind
+		}
+	}{
+		"no suggestions": {
+			uri:             uri,
+			content:         `ak`,
+			line:            1,
+			character:       3, // past k
+			completionItems: nil,
+		},
+		"builtin function and keyword suggestions": {
+			uri:       uri,
+			content:   `re`,
+			line:      1,
+			character: 3, // past e
+			completionItems: []struct {
+				label string
+				kind  analysis.CompletionItemKind
+			}{
+				{label: "rest", kind: analysis.Function},
+				{label: "return", kind: analysis.Keyword},
+			},
+		},
+		"variable suggestion": {
+			uri:       uri,
+			content:   `let myVariable=3; myV`,
+			line:      1,
+			character: 22, // past V
+			completionItems: []struct {
+				label string
+				kind  analysis.CompletionItemKind
+			}{
+				{label: "myVariable", kind: analysis.Variable},
+			},
+		},
+		"parameter suggestion": {
+			uri:       uri,
+			content:   `fn(paramOne){ para }`,
+			line:      1,
+			character: 19, // past ra
+			completionItems: []struct {
+				label string
+				kind  analysis.CompletionItemKind
+			}{
+				{label: "paramOne", kind: analysis.Variable},
+			},
+		},
+		"access to parent scopes": {
+			uri:       uri,
+			content:   `let myVar = 1; fn(){let myVarOne = 2; fn(myVarTwo){ myVa }}`,
+			line:      1,
+			character: 57, // past Va
+			completionItems: []struct {
+				label string
+				kind  analysis.CompletionItemKind
+			}{
+				{label: "myVar", kind: analysis.Variable},
+				{label: "myVarOne", kind: analysis.Variable},
+				{label: "myVarTwo", kind: analysis.Variable},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			state := analysis.NewState()
+			state.DidOpen(1, test.uri, test.content)
+
+			gotCompletionItems := state.Completion(test.uri, test.line, test.character)
+			gotLen, expectedLen := len(gotCompletionItems), len(test.completionItems)
+			if gotLen != expectedLen {
+				t.Fatalf("Expected completion items %d, got %d", expectedLen, gotLen)
+			}
+
+			for _, expectedCompletionItem := range test.completionItems {
+				found := false
+				for _, gotCompletionItem := range gotCompletionItems {
+					if expectedCompletionItem.label == gotCompletionItem.Label &&
+						expectedCompletionItem.kind == gotCompletionItem.Kind {
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					t.Errorf("Expected competion item with label '%s' and kind '%s', not found", expectedCompletionItem.label, expectedCompletionItem.kind.String())
 				}
 			}
 		})

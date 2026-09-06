@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"log/slog"
+	"os"
 
 	"github.com/SegniAT/monkey-lsp/lsp/protocol"
 )
@@ -21,7 +22,20 @@ func (s *Server) handleInitialize(id int64, content json.RawMessage) {
 		)
 	}
 
-	s.writeMessage(protocol.NewInitializeResponse(id))
+	if err := s.writeMessage(protocol.NewInitializeResponse(id)); err == nil {
+		s.initialized.Store(true)
+	}
+}
+
+func (s *Server) handleShutdown() {
+	s.shutdownReceived.Store(true)
+}
+
+func (s *Server) handleExit() {
+	if s.shutdownReceived.Load() {
+		os.Exit(0)
+	}
+	os.Exit(1)
 }
 
 func (s *Server) handleTextDocumentHover(id int64, content json.RawMessage) {
@@ -32,7 +46,7 @@ func (s *Server) handleTextDocumentHover(id int64, content json.RawMessage) {
 	}
 
 	result := s.state.Hover(request.Params.TextDocument.URI, request.Params.Position.Line+1, request.Params.Position.Character+1)
-	s.writeMessage(protocol.HoverResponse{
+	_ = s.writeMessage(protocol.HoverResponse{
 		Response: protocol.Response{
 			Message: protocol.Message{JSONRPC: "2.0"},
 			ID:      &id,
@@ -49,7 +63,7 @@ func (s *Server) handleTextDocumentDefinition(id int64, content json.RawMessage)
 	}
 
 	result := s.state.Definition(request.Params.TextDocument.URI, request.Params.Position.Line+1, request.Params.Position.Character+1)
-	s.writeMessage(protocol.DefinitionResponse{
+	_ = s.writeMessage(protocol.DefinitionResponse{
 		Response: protocol.Response{
 			Message: protocol.Message{JSONRPC: "2.0"},
 			ID:      &id,
@@ -65,8 +79,8 @@ func (s *Server) handleTextDocumentCompletion(id int64, content json.RawMessage)
 		return
 	}
 
-	result := s.state.Completion(request.Params.TextDocument.URI, request.Params.Position.Line, request.Params.Position.Character)
-	s.writeMessage(protocol.CompletionResponse{
+	result := s.state.Completion(request.Params.TextDocument.URI, request.Params.Position.Line+1, request.Params.Position.Character+1)
+	_ = s.writeMessage(protocol.CompletionResponse{
 		Response: protocol.Response{
 			Message: protocol.Message{JSONRPC: "2.0"},
 			ID:      &id,

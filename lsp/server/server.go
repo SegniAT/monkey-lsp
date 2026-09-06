@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/SegniAT/monkey-lsp/analysis"
 	"github.com/SegniAT/monkey-lsp/lsp/protocol"
@@ -13,6 +14,9 @@ import (
 )
 
 type Server struct {
+	initialized      atomic.Bool
+	shutdownReceived atomic.Bool
+
 	state  *analysis.State
 	reader *rpc.Reader
 	writer *rpc.Writer
@@ -49,7 +53,17 @@ func (s *Server) Run() error {
 			continue
 		}
 
-		if msg.ID != nil {
+		isRequest := msg.ID != nil
+
+		// If we receive a request before the server is initialized, we should return error with -32002 code
+		if isRequest && !s.initialized.Load() &&
+			msg.Method != "exit" && msg.Method != "initialize" {
+			_ = s.writeError(*msg.ID, &protocol.ResponseError{
+				Code: protocol.ErrServerNotInitialized})
+			continue
+		}
+
+		if isRequest {
 			s.HandleRequest(*msg.ID, msg.Method, content)
 		} else {
 			s.HandleNotification(msg.Method, content)
@@ -61,8 +75,10 @@ func (s *Server) HandleRequest(id int64, method string, content []byte) {
 	switch method {
 	case "initialize":
 		s.handleInitialize(id, content)
-	// case "shutdown":
-	// 	s.handleShutdown(id, content)
+	case "shutdown":
+		s.handleShutdown()
+	case "exit":
+		s.handleExit()
 	case "textDocument/hover":
 		s.handleTextDocumentHover(id, content)
 	case "textDocument/definition":
@@ -88,26 +104,29 @@ func (s *Server) HandleNotification(method string, content []byte) {
 		s.handleTextDocumentDidChange(content)
 	// case "textDocument/didClose":
 	// 	s.handleTextDocumentDidClose(content)
+	case "exit":
+		s.handleExit()
 	default:
 		slog.Warn("Unsupported notification", slog.String("method", method))
 	}
 }
 
-func (s *Server) writeMessage(v any) {
+func (s *Server) writeMessage(v any) error {
 	content, err := json.Marshal(v)
 	if err != nil {
-		slog.Error("Error marshalling message", slog.String("err", err.Error()))
-		return
+		return fmt.Errorf("Error marshalling message: %w", err)
 	}
 
 	_, err = s.writer.WriteMessage(content)
 	if err != nil {
-		slog.Error("Error writing message", slog.String("err", err.Error()))
+		return fmt.Errorf("Error writing message: %v", err)
 	}
+
+	return nil
 }
 
-func (s *Server) writeError(id int64, respErr *protocol.ResponseError) {
-	s.writeMessage(protocol.Response{
+func (s *Server) writeError(id int64, respErr *protocol.ResponseError) error {
+	return s.writeMessage(protocol.Response{
 		Message: protocol.Message{JSONRPC: "2.0"},
 		ID:      &id,
 		Error:   respErr,
